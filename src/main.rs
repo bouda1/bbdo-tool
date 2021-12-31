@@ -1,6 +1,6 @@
 use clap::App;
 use phf::phf_set;
-use serde_json::{Value, json};
+use serde_json::Value;
 mod bbdo;
 use bbdo::Bbdo;
 use std::process;
@@ -114,8 +114,15 @@ fn main() {
     // retval is only used with the --count option.
     let mut retval = 0;
 
+    let mut compressed = false;
+    if b.offset < b.len() {
+        compressed = match b.deserialize() {
+            Ok(_v) => false,
+            Err(_e) => true,
+        }
+    }
     while b.offset < b.len() {
-        let res = b.unserialize();
+        let res = if !compressed { b.deserialize().unwrap() } else { panic!("Compression not managed"); };
         let res_name = res[0].as_str().unwrap();
         let res_obj = res[1].as_object().unwrap();
 

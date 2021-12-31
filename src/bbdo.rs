@@ -181,7 +181,22 @@ impl Bbdo {
         return &v;
     }
 
-    pub fn unserialize(&mut self) -> serde_json::Value {
+    fn compute_crc16(&self, data: &[u8]) -> u16 {
+        const CRC_TBL : [u16;16] = [0x0000, 0x1081, 0x2102, 0x3183, 0x4204, 0x5285, 0x6306, 0x7387,
+            0x8408, 0x9489, 0xa50a, 0xb58b, 0xc60c, 0xd68d, 0xe70e, 0xf78f];
+        let mut crc: u16 = 0xffff;
+        let mut data_len = 10;
+        for c in data {
+            let mut cc : u16 = *c as u16;
+            crc = ((crc >> 4) & 0x0fff) ^ CRC_TBL[((crc ^ cc) & 15) as usize];
+            cc >>= 4;
+            crc = ((crc >> 4) & 0x0fff) ^ CRC_TBL[((crc ^ cc) & 15) as usize];
+        }
+        return !crc & 0xffff;
+    }
+
+    pub fn deserialize(&mut self) -> Result<serde_json::Value, &'static str> {
+        let offset = self.offset;
         let chksum = u16::from_be_bytes(
             self.buffer[self.offset..(self.offset + 2)]
                 .try_into()
@@ -225,6 +240,12 @@ impl Bbdo {
         self.offset += 4;
 
         let old_offset = self.offset;
+        let verif_chksum = self.compute_crc16(&self.buffer[(offset + 2)..old_offset]);
+
+        if verif_chksum != chksum {
+            self.offset = offset;
+            return Err("BBDO header unreadable");
+        }
 
         let key = format!("{}:{}", category, element);
 
@@ -257,6 +278,6 @@ impl Bbdo {
             }
         }
         self.offset = old_offset + size as usize;
-        retval
+        Ok(retval)
     }
 }
