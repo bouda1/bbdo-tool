@@ -37,5 +37,4 @@ bbdo-tool /var/lib/centreon-broker/central-broker-master.unprocessed
 *Warnings*.
 * All the BBDO are not yet implemented in bbdo-tool, so you can have
   incomplete results.
-* At the moment, if the BBDO contains compressed events, they are not read. This
-  will arrive very soon.
+* This software works with all bbdo files, compressed and not compressed.
