@@ -59,6 +59,7 @@ static EVENT: phf::Set<&'static str> = phf_set! {
     "BAM::DimensionTimeperiodException",
     "BAM::DimensionTimeperiodExclusion",
     "BAM::InheritedDowntime",
+    "unknown",
 };
 
 fn main() {
