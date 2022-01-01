@@ -1,8 +1,6 @@
-use crate::event::Event;
+use serde_json::json;
 use phf::phf_map;
-use std::io::Read;
-use std::{fs, str, vec};
-use miniz_oxide::inflate::decompress_to_vec_zlib;
+use std::str;
 
 pub enum Type {
     NONE,
@@ -75,38 +73,14 @@ static EVENT: phf::Map<&'static str, (&'static str, &'static [(&'static str, Typ
                                   ]),
 };
 
-/// Bbdo object obtained from a file.
-///
-/// It is composed of `buffer` that is a vector of `u8` containing the full
-/// content of the file used to construct it and of `offset` which is an index
-/// to point to the current position in `buffer`.
-///
-pub struct Bbdo {
-    buffer: std::vec::Vec<u8>,
-    pub offset: usize,
+pub struct Event<'a> {
+    buffer: &'a [u8],
+    offset: usize,
 }
 
-impl Bbdo {
-    /// Constructor of a Bbdo object from the file `filename`.
-    ///
-    /// Returns a `Bbdo` object.
-    pub fn new(filename: &str) -> Bbdo {
-        let mut f = fs::File::open(&filename).expect("no file found");
-        let metadata = fs::metadata(&filename).expect("unable to read metadata");
-        let mut buffer = vec![0; metadata.len() as usize];
-        f.read(&mut buffer).expect("buffer overflow");
-        Bbdo {
-            buffer: buffer,
-            offset: 8,
-        }
-    }
-
-    /// Gets the length of the Bbdo object.
-    ///
-    /// Returns the length of the Bbdo object.
-    ///
-    pub fn len(&self) -> usize {
-        self.buffer.len()
+impl Event<'_> {
+    pub fn new(buffer : &[u8]) -> Event {
+        Event { buffer: buffer, offset: 0}
     }
 
     fn get_bool(&mut self) -> bool {
@@ -117,12 +91,11 @@ impl Bbdo {
                 .expect("slice with incorrect length"),
         );
         self.offset += size;
-        if v == 1 {
-            return true;
-        } else if v == 0 {
-            return false;
-        } else {
-            panic!("A boolean in bbdo format can only be 0 or 1");
+        match v {
+            0 => false,
+            1 => true,
+            _ => {
+            panic!("A boolean in bbdo format can only be 0 or 1"); }
         }
     }
 
@@ -134,7 +107,7 @@ impl Bbdo {
                 .expect("slice with incorrect length"),
         );
         self.offset += size;
-        return v;
+        v
     }
 
     fn get_int32(&mut self) -> i32 {
@@ -145,7 +118,7 @@ impl Bbdo {
                 .expect("slice with incorrect length"),
         );
         self.offset += size;
-        return v;
+        v
     }
 
     fn get_int64(&mut self) -> i64 {
@@ -156,13 +129,13 @@ impl Bbdo {
                 .expect("slice with incorrect length"),
         );
         self.offset += size;
-        return v;
+        v
     }
 
     fn get_double(&mut self) -> f64 {
         let s = self.get_string();
         let v = s.parse::<f64>().unwrap();
-        return v;
+        v
     }
 
     fn get_string(&mut self) -> &str {
@@ -179,7 +152,7 @@ impl Bbdo {
             Err(e) => "Wrong UTF-8 string",
         };
         self.offset = i + 1;
-        return &v;
+        &v
     }
 
     fn compute_crc16(data: &[u8]) -> u16 {
@@ -198,87 +171,88 @@ impl Bbdo {
         return !crc & 0xffff;
     }
 
-    pub fn is_compressed(&mut self) -> bool {
-        let offset = self.offset;
-        if self.offset >= self.len() {
-            return false;
-        }
-        let chksum = u16::from_be_bytes(
-            self.buffer[self.offset..(self.offset + 2)]
-                .try_into()
-                .expect("slice with incorrect length"),
-        );
-        self.offset += 2;
+    pub fn deserialize(&mut self) -> serde_json::Value {
+            let offset = self.offset;
+            let chksum = u16::from_be_bytes(
+                self.buffer[self.offset..(self.offset + 2)]
+                    .try_into()
+                    .expect("slice with incorrect length"),
+            );
+            self.offset += 2;
 
-        let size = u16::from_be_bytes(
-            self.buffer[self.offset..(self.offset + 2)]
-                .try_into()
-                .expect("slice with incorrect length"),
-        );
-        self.offset += 2;
+            let size = u16::from_be_bytes(
+                self.buffer[self.offset..(self.offset + 2)]
+                    .try_into()
+                    .expect("slice with incorrect length"),
+            );
+            self.offset += 2;
 
-        let category = u16::from_be_bytes(
-            self.buffer[self.offset..(self.offset + 2)]
-                .try_into()
-                .expect("slice with incorrect length"),
-        );
-        self.offset += 2;
+            let category = u16::from_be_bytes(
+                self.buffer[self.offset..(self.offset + 2)]
+                    .try_into()
+                    .expect("slice with incorrect length"),
+            );
+            self.offset += 2;
 
-        let element = u16::from_be_bytes(
-            self.buffer[self.offset..(self.offset + 2)]
-                .try_into()
-                .expect("slice with incorrect length"),
-        );
-        self.offset += 2;
+            let element = u16::from_be_bytes(
+                self.buffer[self.offset..(self.offset + 2)]
+                    .try_into()
+                    .expect("slice with incorrect length"),
+            );
+            self.offset += 2;
 
-        let source_id = u32::from_be_bytes(
-            self.buffer[self.offset..(self.offset + 4)]
-                .try_into()
-                .expect("slice with incorrect length"),
-        );
-        self.offset += 4;
-
-        let dest_id = u32::from_be_bytes(
-            self.buffer[self.offset..(self.offset + 4)]
-                .try_into()
-                .expect("slice with incorrect length"),
-        );
-        self.offset += 4;
-
-        let old_offset = self.offset;
-        let verif_chksum = Bbdo::compute_crc16(&self.buffer[(offset + 2)..old_offset]);
-
-        self.offset = offset;
-        verif_chksum != chksum
-    }
-
-    pub fn deserialize(&mut self, compressed: &bool) -> serde_json::Value {
-        if *compressed {
-            let size = u32::from_be_bytes(
+            let source_id = u32::from_be_bytes(
                 self.buffer[self.offset..(self.offset + 4)]
                     .try_into()
                     .expect("slice with incorrect length"),
             );
-            let d = decompress_to_vec_zlib(
-                self.buffer[(self.offset + 8)..(self.offset + 8 + size as usize)]
-                    .try_into()
-                    .expect("slice with incorrect length"),
-            )
-            .unwrap();
-            let mut event = Event::new(&d);
-            let retval = event.deserialize();
-            self.offset += 4 + size as usize;
-            return retval;
-        } else {
-            let size = u16::from_be_bytes(
-                self.buffer[(self.offset + 2)..(self.offset + 4)]
+            self.offset += 4;
+
+            let dest_id = u32::from_be_bytes(
+                self.buffer[self.offset..(self.offset + 4)]
                     .try_into()
                     .expect("slice with incorrect length"),
             );
-            let mut event = Event::new(&self.buffer[self.offset..(self.offset + 16 + size as usize)]);
-            let retval = event.deserialize();
-            self.offset += 16 + size as usize;
-            return retval;
-        }
+            self.offset += 4;
+
+            let old_offset = self.offset;
+            let verif_chksum = Event::compute_crc16(&self.buffer[(offset + 2)..old_offset]);
+
+            if verif_chksum != chksum {
+                panic!("BBDO header unreadable");
+            }
+
+            let key = format!("{}:{}", category, element);
+
+            let mut retval = json!([
+                "unknown",
+                {
+                "chksum": chksum,
+                "size": size,
+                "category": category,
+                "element": element,
+                "source_id": source_id,
+                "dest_id": dest_id,
+            }]);
+
+            if EVENT.contains_key(&key) {
+                let d = EVENT[&key];
+                retval[0] = d.0.into();
+                let arr = d.1;
+                for t in arr {
+                    retval[1][t.0] = match t.1 {
+                        Type::BOOL => self.get_bool().into(),
+                        Type::SHORT => self.get_short().into(),
+                        Type::STR => self.get_string().into(),
+                        Type::DOUBLE => self.get_double().into(),
+                        Type::INT32 => self.get_int32().into(),
+                        Type::INT64 => self.get_int64().into(),
+                        Type::TIMESTAMP => self.get_int64().into(),
+                        _ => panic!("Should not arrive"),
+                    }
+                }
+            }
+            self.offset = old_offset + size as usize;
+            retval
     }
 }
