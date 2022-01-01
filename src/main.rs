@@ -103,7 +103,7 @@ fn main() {
 
     let filter : Value = match serde_json::from_str(filter) {
         Ok(v) => v,
-        Err(e) => {
+        Err(_e) => {
             println!("{}: The filter is not a json string", "Error".red().bold());
             process::exit(1);
         }

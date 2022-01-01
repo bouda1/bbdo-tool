@@ -149,7 +149,7 @@ impl Event<'_> {
                 .expect("slice with incorrect length"),
         ) {
             Ok(v) => v,
-            Err(e) => "Wrong UTF-8 string",
+            Err(_e) => "Wrong UTF-8 string",
         };
         self.offset = i + 1;
         &v
@@ -161,7 +161,6 @@ impl Event<'_> {
             0xb58b, 0xc60c, 0xd68d, 0xe70e, 0xf78f,
         ];
         let mut crc: u16 = 0xffff;
-        let mut data_len = 10;
         for c in data {
             let mut cc: u16 = *c as u16;
             crc = ((crc >> 4) & 0x0fff) ^ CRC_TBL[((crc ^ cc) & 15) as usize];
