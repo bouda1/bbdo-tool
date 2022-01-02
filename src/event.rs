@@ -442,13 +442,15 @@ static EVENT: phf::Map<&'static str, (&'static str, &'static [(&'static str, Typ
 pub struct Event<'a> {
     buffer: &'a [u8],
     offset: usize,
+    deprecated: bool,
 }
 
 impl Event<'_> {
-    pub fn new(buffer: &[u8]) -> Event {
+    pub fn new(buffer: &[u8], deprecated: bool) -> Event {
         Event {
             buffer: buffer,
             offset: 0,
+            deprecated: deprecated,
         }
     }
 
@@ -490,6 +492,20 @@ impl Event<'_> {
     }
 
     fn get_int64(&mut self) -> i64 {
+        if self.deprecated {
+            return self.get_int32() as i64;
+        }
+        let size = 8;
+        let v = i64::from_be_bytes(
+            self.buffer[self.offset..(self.offset + size)]
+                .try_into()
+                .expect("slice with incorrect length"),
+        );
+        self.offset += size;
+        v
+    }
+
+    fn get_timestamp(&mut self) -> i64 {
         let size = 8;
         let v = i64::from_be_bytes(
             self.buffer[self.offset..(self.offset + size)]
@@ -538,9 +554,16 @@ impl Event<'_> {
         return !crc & 0xffff;
     }
 
+    /// Deserializes the event from the current offset. `filter_event` is the
+    /// type of events we want to get. If the function detects another type
+    /// of event, it returns an error. So if the caller uses deserialize with
+    /// a given type, we only get events of that type.
+    ///
+    /// Returns a Result with a JSON value or an error message.
+    ///
     pub fn deserialize(&mut self, filter_event: &i32) -> Result<serde_json::Value, &'static str> {
-        let filter_cat : u16 = (filter_event >> 16) as u16;
-        let filter_elem : u16 = *filter_event as u16;
+        let filter_cat: u16 = (filter_event >> 16) as u16;
+        let filter_elem: u16 = *filter_event as u16;
         let offset = self.offset;
         let chksum = u16::from_be_bytes(
             self.buffer[self.offset..(self.offset + 2)]
@@ -624,7 +647,7 @@ impl Event<'_> {
                     Type::DOUBLE => self.get_double().into(),
                     Type::INT32 => self.get_int32().into(),
                     Type::INT64 => self.get_int64().into(),
-                    Type::TIMESTAMP => self.get_int64().into(),
+                    Type::TIMESTAMP => self.get_timestamp().into(),
                     _ => panic!("Should not arrive"),
                 };
             }

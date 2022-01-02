@@ -1,7 +1,7 @@
 use crate::event::Event;
+use miniz_oxide::inflate::decompress_to_vec_zlib;
 use std::io::Read;
 use std::{fs, str, vec};
-use miniz_oxide::inflate::decompress_to_vec_zlib;
 
 /// Bbdo object obtained from a file.
 ///
@@ -66,7 +66,12 @@ impl Bbdo {
         verif_chksum != chksum
     }
 
-    pub fn deserialize(&mut self, compressed: &bool, filter_event: &i32) -> Result<serde_json::Value, &'static str> {
+    pub fn deserialize(
+        &mut self,
+        compressed: &bool,
+        filter_event: &i32,
+        deprecated: &bool,
+    ) -> Result<serde_json::Value, &'static str> {
         if *compressed {
             let size = u32::from_be_bytes(
                 self.buffer[self.offset..(self.offset + 4)]
@@ -79,7 +84,7 @@ impl Bbdo {
                     .expect("slice with incorrect length"),
             )
             .unwrap();
-            let mut event = Event::new(&d);
+            let mut event = Event::new(&d, *deprecated);
             let retval = event.deserialize(filter_event);
             self.offset += 4 + size as usize;
             return retval;
@@ -89,7 +94,10 @@ impl Bbdo {
                     .try_into()
                     .expect("slice with incorrect length"),
             );
-            let mut event = Event::new(&self.buffer[self.offset..(self.offset + 16 + size as usize)]);
+            let mut event = Event::new(
+                &self.buffer[self.offset..(self.offset + 16 + size as usize)],
+                *deprecated,
+            );
             let retval = event.deserialize(filter_event);
             self.offset += 16 + size as usize;
             return retval;
