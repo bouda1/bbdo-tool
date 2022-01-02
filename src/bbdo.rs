@@ -66,7 +66,7 @@ impl Bbdo {
         verif_chksum != chksum
     }
 
-    pub fn deserialize(&mut self, compressed: &bool) -> serde_json::Value {
+    pub fn deserialize(&mut self, compressed: &bool, filter_event: &i32) -> Result<serde_json::Value, &'static str> {
         if *compressed {
             let size = u32::from_be_bytes(
                 self.buffer[self.offset..(self.offset + 4)]
@@ -80,7 +80,7 @@ impl Bbdo {
             )
             .unwrap();
             let mut event = Event::new(&d);
-            let retval = event.deserialize();
+            let retval = event.deserialize(filter_event);
             self.offset += 4 + size as usize;
             return retval;
         } else {
@@ -90,7 +90,7 @@ impl Bbdo {
                     .expect("slice with incorrect length"),
             );
             let mut event = Event::new(&self.buffer[self.offset..(self.offset + 16 + size as usize)]);
-            let retval = event.deserialize();
+            let retval = event.deserialize(filter_event);
             self.offset += 16 + size as usize;
             return retval;
         }

@@ -538,7 +538,9 @@ impl Event<'_> {
         return !crc & 0xffff;
     }
 
-    pub fn deserialize(&mut self) -> serde_json::Value {
+    pub fn deserialize(&mut self, filter_event: &i32) -> Result<serde_json::Value, &'static str> {
+        let filter_cat : u16 = (filter_event >> 16) as u16;
+        let filter_elem : u16 = *filter_event as u16;
         let offset = self.offset;
         let chksum = u16::from_be_bytes(
             self.buffer[self.offset..(self.offset + 2)]
@@ -559,6 +561,10 @@ impl Event<'_> {
                 .try_into()
                 .expect("slice with incorrect length"),
         );
+        if *filter_event != -1 && category != filter_cat {
+            return Err("Bad category");
+        }
+
         self.offset += 2;
 
         let element = u16::from_be_bytes(
@@ -566,6 +572,10 @@ impl Event<'_> {
                 .try_into()
                 .expect("slice with incorrect length"),
         );
+        if *filter_event != -1 && element != filter_elem {
+            return Err("Bad element");
+        }
+
         self.offset += 2;
 
         let source_id = u32::from_be_bytes(
@@ -620,6 +630,6 @@ impl Event<'_> {
             }
         }
         self.offset = old_offset + size as usize;
-        retval
+        Ok(retval)
     }
 }
