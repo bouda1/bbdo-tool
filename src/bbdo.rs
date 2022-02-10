@@ -9,16 +9,17 @@ use std::{fs, str, vec};
 /// content of the file used to construct it and of `offset` which is an index
 /// to point to the current position in `buffer`.
 ///
-pub struct Bbdo {
+pub struct Bbdo<'a> {
     buffer: std::vec::Vec<u8>,
     pub offset: usize,
+    output: &'a str,
 }
 
-impl Bbdo {
+impl Bbdo<'_> {
     /// Constructor of a Bbdo object from the file `filename`.
     ///
     /// Returns a `Bbdo` object.
-    pub fn new(filename: &str) -> Bbdo {
+    pub fn new<'a>(filename: &'a str, output: &'a str) -> Bbdo<'a> {
         let mut f = fs::File::open(&filename).expect("no file found");
         let metadata = fs::metadata(&filename).expect("unable to read metadata");
         let mut buffer = vec![0; metadata.len() as usize];
@@ -26,6 +27,7 @@ impl Bbdo {
         Bbdo {
             buffer: buffer,
             offset: 8,
+            output: output,
         }
     }
 
