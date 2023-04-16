@@ -1,5 +1,14 @@
+extern crate quick_protobuf;
+
 mod bbdo;
 pub mod event;
+
+pub mod pb_bbdo;
+
+use pb_bbdo::com::centreon::broker::Host;
+use pb_bbdo::com::centreon::broker::ServiceStatus;
+
+use quick_protobuf::Reader;
 
 use bbdo::Bbdo;
 use clap::App;
@@ -34,14 +43,48 @@ static EVENT: phf::Map<&'static str, i32> = phf_map! {
     "NEB::Service" => 0x00010017,
     "NEB::ServiceStatus" => 0x00010018,
     "NEB::InstanceConfiguration" => 0x00010019,
+    "NEB::ResponsiveInstance" => 0x0001001a,
+    "NEB::PbService" => 0x0001001b,
+    "NEB::PbAdaptiveService" => 0x0001001c,
+    "PbServiceStatus" => 0x0001001d,
+    "PbHost" => 0x0001001e,
+    "PbAdaptiveHost" => 0x0001001f,
+    "PbHostStatus" => 0x00010020,
+    "PbSeverity" => 0x00010021,
+    "PbTag" => 0x00010022,
+    "PbComment" => 0x00010023,
+    "PbDowntime" => 0x00010024,
+    "PbCustom_variable" => 0x00010025,
+    "PbCustom_variable_status" => 0x00010026,
+    "PbHost_check" => 0x00010027,
+    "PbService_check" => 0x00010028,
+    "PbLogEntry" => 0x00010029,
+    "PbInstanceStatus" => 0x0001002a,
+    "PbModule" => 0x0001002b,
+    "PbInstance" => 0x0001002c,
+    "PbAcknowledgement" => 0x0001002d,
+    "PbResponsive_instance" => 0x0001002e,
     "Storage::Metric" => 0x00030001,
     "Storage::Rebuild" => 0x00030002,
     "Storage::RemoveGraph" => 0x00030003,
     "Storage::Status" => 0x00030004,
     "Storage::IndexMapping" => 0x00030005,
     "Storage::MetricMapping" => 0x00030006,
+    "Storage::RebuildMessage" => 0x00030007,
+    "Storage::RemoveGraphMessage" => 0x00030008,
+    "Storage::PbMetric" => 0x00030009,
+    "Storage::PbStatus" => 0x0003000a,
+    "Storage::PbIndexMapping" => 0x0003000b,
+    "Storage::PbMetricMapping" => 0x0003000c,
     "BBDO::VersionResponse" => 0xffff0001,
     "BBDO::Ack" => 0xffff0002,
+    "BBDO::Stop" => 0xffff0003,
+    "BBDO::RebuildGraphs" => 0xffff0004,
+    "BBDO::RemoveGraphs" => 0xffff0005,
+    "BBDO::RemovePoller" => 0xffff0006,
+    "BBDO::Welcome" => 0xffff0007,
+    "BBDO::PbAck" => 0xffff0008,
+    "BBDO::PbStop" => 0xffff0009,
     "BAM::BaStatus" => 0x00060001,
     "BAM::KpiStatus" => 0x00060002,
     "BAM::MetaServiceStatus" => 0x00060003,
@@ -59,6 +102,19 @@ static EVENT: phf::Map<&'static str, i32> = phf_map! {
     "BAM::DimensionTimeperiodException" => 0x0006000f,
     "BAM::DimensionTimeperiodExclusion" => 0x00060010,
     "BAM::InheritedDowntime" => 0x00060011,
+    "BAM::PbInheritedDowntime" => 0x00060012,
+    "BAM::PbBaStatus" => 0x00060013,
+    "BAM::PbBaEvent" => 0x00060014,
+    "BAM::PbKpiEvent" => 0x00060015,
+    "BAM::PbDimensionBvEvent" => 0x00060016,
+    "BAM::PbDimensionBaBvRelationEvent" => 0x00060017,
+    "BAM::PbDimensionTimeperiod" => 0x00060018,
+    "BAM::PbDimensionBaEvent" => 0x00060019,
+    "BAM::PbDimensionKpiEvent" => 0x0006001a,
+    "BAM::PbKpiStatus" => 0x0006001b,
+    "BAM::PbBaDurationEvent" => 0x0006001c,
+    "BAM::PbDimensionBaTimeperiodRelation" => 0x0006001d,
+    "BAM::PbDimensionTruncateTableSignal" => 0x0006001e,
     "unknown" => 0,
 };
 

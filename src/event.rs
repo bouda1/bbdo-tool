@@ -1,6 +1,9 @@
 use phf::phf_map;
 use serde_json::json;
 use std::str;
+use quick_protobuf::{MessageRead, BytesReader, MessageWrite};
+use crate::pb_bbdo::com::centreon::broker::HostStatus;
+use crate::pb_bbdo::com::centreon::broker::ServiceStatus;
 
 pub enum Type {
     NONE,
@@ -207,6 +210,15 @@ static EVENT: phf::Map<&'static str, (&'static str, &'static [(&'static str, Typ
                                    ("output", Type::STR),
                                    ("perfdata", Type::STR),
                                    ]),
+    "1:15" => ("NEB::Instance", &[("engine", Type::STR),
+                                   ("instance_id", Type::INT32),
+                                   ("name", Type::STR),
+                                   ("running", Type::BOOL),
+                                   ("pid", Type::INT32),
+                                   ("end_time", Type::TIMESTAMP),
+                                   ("start_time", Type::TIMESTAMP),
+                                   ("version", Type::STR),
+                                   ]),
     "1:16" => ("NEB::InstanceStatus", &[("active_host_checks_enabled", Type::BOOL),
                                 ("active_service_checks_enabled", Type::BOOL),
                                 ("check_hosts_freshness", Type::BOOL),
@@ -407,6 +419,12 @@ static EVENT: phf::Map<&'static str, (&'static str, &'static [(&'static str, Typ
     "1:25" => ("NEB::InstanceConfiguration", &[("loaded", Type::BOOL),
                                    ("poller_id", Type::INT32),
                                    ]),
+    "1:27" => ("NEB::PbService", &[]),
+    "1:28" => ("NEB::PbAdaptiveService", &[]),
+    "1:29" => ("NEB::PbServiceStatus", &[]),
+    "1:30" => ("NEB::PbHost", &[]),
+    "1:31" => ("NEB::PbAdaptiveHost", &[]),
+    "1:32" => ("NEB::PbHostStatus", &[]),
     "3:1" => ("Storage::Metric", &[("ctime", Type::TIMESTAMP),
                                    ("interval", Type::INT32),
                                    ("metric_id", Type::INT32),
@@ -433,6 +451,21 @@ static EVENT: phf::Map<&'static str, (&'static str, &'static [(&'static str, Typ
     "3:6" => ("Storage::MetricMapping", &[
                                    ("index_id", Type::INT64),
                                    ("metric_id", Type::INT32),
+    ]),
+    "6:2" => ("Bam::KpiStatus", &[
+    ("kpi_id", Type::INT32),
+        ("in_downtime", Type::BOOL),
+        ("level_acknowledgement_hard", Type::DOUBLE),
+        ("level_acknowledgement_soft", Type::DOUBLE),
+        ("level_downtime_hard", Type::DOUBLE),
+        ("level_downtime_soft", Type::DOUBLE),
+        ("level_nominal_hard", Type::DOUBLE),
+        ("level_nominal_soft", Type::DOUBLE),
+        ("state_hard", Type::SHORT),
+        ("state_soft", Type::SHORT),
+        ("last_state_change", Type::TIMESTAMP),
+        ("last_impact", Type::DOUBLE),
+        ("valid", Type::BOOL),
     ]),
     "65535:2" => ("BBDO::Ack", &[
     ("acknowledged_events", Type::INT32)
@@ -635,22 +668,50 @@ impl Event<'_> {
             "dest_id": dest_id,
         }]);
 
+        println!("*** Event of type {}", key);
         if EVENT.contains_key(&key) {
             let d = EVENT[&key];
             retval[0] = d.0.into();
             let arr = d.1;
-            for t in arr {
-                retval[1][t.0] = match t.1 {
-                    Type::BOOL => self.get_bool().into(),
-                    Type::SHORT => self.get_short().into(),
-                    Type::STR => self.get_string().into(),
-                    Type::DOUBLE => self.get_double().into(),
-                    Type::INT32 => self.get_int32().into(),
-                    Type::INT64 => self.get_int64().into(),
-                    Type::TIMESTAMP => self.get_timestamp().into(),
-                    _ => panic!("Should not arrive"),
+            if (*arr).len() > 0 {
+                let mut n = 0;
+                for t in arr {
+                    // Legacy event
+                    //println!(" => n = {}", n);
+                    retval[1][t.0] = match t.1 {
+                        Type::BOOL => self.get_bool().into(),
+                        Type::SHORT => self.get_short().into(),
+                        Type::STR => self.get_string().into(),
+                        Type::DOUBLE => self.get_double().into(),
+                        Type::INT32 => self.get_int32().into(),
+                        Type::INT64 => self.get_int64().into(),
+                        Type::TIMESTAMP => self.get_timestamp().into(),
+                        _ => panic!("Should not arrive"),
+                    };
+                    n += 1;
+                }
+            } else {
+                // Protobuf event
+                let typ : u32 = ((category as u32) << 16) | element as u32;
+                let v = &self.buffer[self.offset..(self.offset + (size as usize))];
+                let mut reader = BytesReader::from_bytes(&v);
+
+                println!("*** '{}' is a Protobuf '{}' event", key, d.0);
+                let msg = match typ {
+                    65565 => {
+                        let message = ServiceStatus::from_reader(&mut reader, &v).expect("Cannot read PbServiceStatus");
+                        message
+                        },
+                    65568 => {
+                        let message :HostStatus = HostStatus::from_reader(&mut reader, &v).expect("Cannot read PbHostStatus");
+                        message
+                    },
+                    _ => panic!("Should not happend"),
                 };
+                println!("===> {:?}", &msg);
             }
+        } else {
+            panic!("BBDO message of type {} unknown", key);
         }
         self.offset = old_offset + size as usize;
         Ok(retval)

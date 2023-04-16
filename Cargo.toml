@@ -12,3 +12,4 @@ phf = { version = "0.10", features = ["macros"] }
 clap = "2.34.0"
 colored = "2.0.0"
 miniz_oxide = "*"
+quick-protobuf = "0.8.0"
